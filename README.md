@@ -20,7 +20,17 @@ cd packaging
 makepkg -si
 ```
 
-Open **Framework Battery** in System Settings, or run `kcmshell6 kcm_framework_battery`. Installing the package registers its system D-Bus service and polkit action. A charge-limit write prompts for administrator authentication. A schedule change writes root-owned configuration and enables or disables `framework-battery-schedule.timer`; disabling it leaves the current EC limit alone.
+Open **Framework Battery** in System Settings, or run `kcmshell6 kcm_framework_battery`. Installing the package registers its system D-Bus service and polkit action. By default, writes prompt for administrator authentication. A schedule change writes root-owned configuration and enables or disables `framework-battery-schedule.timer`; disabling it leaves the current EC limit alone.
+
+### Prompt-free changes for one local administrator
+
+The pane does not call `sudo`. Its D-Bus service runs as root, and polkit authorizes each write. On a personal machine, run this one-time setup to allow a named `wheel` user to change Framework battery settings without a password prompt:
+
+```sh
+sudo ./packaging/enable-passwordless.sh "$USER"
+```
+
+The rule applies only to the named user in an active local session and only to `org.frameworkbattery.modify`. Other users keep the normal polkit policy. Remove `/etc/polkit-1/rules.d/49-framework-battery-USERNAME.rules` as root to revoke access.
 
 Each entry selects weekdays, a local time, and a limit. On boot or when a schedule is saved, the most recent weekly entry is applied. Manual changes last until the next schedule event. The next event can also take precedence over a one-time full-charge request.
 
