@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-version=0.1.0
+version=0.2.0
 archive="framework-battery-${version}.tar.gz"
 tar -C .. \
     --exclude='./target' \

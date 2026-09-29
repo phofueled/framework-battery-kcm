@@ -17,6 +17,8 @@ class FrameworkBatteryKcm : public KQuickConfigModule {
     Q_PROPERTY(bool busy READ busy NOTIFY statusChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY statusChanged)
     Q_PROPERTY(bool scheduleEnabled READ scheduleEnabled NOTIFY scheduleLoaded)
+    Q_PROPERTY(int scheduleOutsideLimit READ scheduleOutsideLimit NOTIFY scheduleLoaded)
+    Q_PROPERTY(bool scheduleHasLegacyEntries READ scheduleHasLegacyEntries NOTIFY scheduleLoaded)
     Q_PROPERTY(QVariantList scheduleEntries READ scheduleEntries NOTIFY scheduleLoaded)
 
 public:
@@ -30,12 +32,14 @@ public:
     bool busy() const { return m_busy; }
     QString lastError() const { return m_lastError; }
     bool scheduleEnabled() const { return m_scheduleEnabled; }
+    int scheduleOutsideLimit() const { return m_scheduleOutsideLimit; }
+    bool scheduleHasLegacyEntries() const { return m_scheduleHasLegacyEntries; }
     QVariantList scheduleEntries() const { return m_scheduleEntries; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void setChargeLimit(int limit);
     Q_INVOKABLE void chargeToFullOnce();
-    Q_INVOKABLE void saveSchedule(bool enabled, const QVariantList &entries);
+    Q_INVOKABLE void saveSchedule(bool enabled, int outsideLimit, const QVariantList &entries);
 
 Q_SIGNALS:
     void statusChanged();
@@ -59,5 +63,7 @@ private:
     bool m_busy = false;
     QString m_lastError;
     bool m_scheduleEnabled = false;
+    int m_scheduleOutsideLimit = 100;
+    bool m_scheduleHasLegacyEntries = false;
     QVariantList m_scheduleEntries;
 };

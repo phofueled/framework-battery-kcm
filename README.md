@@ -2,7 +2,7 @@
 
 A small KDE System Settings pane for Framework laptop battery controls on CachyOS and Arch Linux. The pane is Qt/QML with Kirigami; a Rust system D-Bus service uses Framework's `framework_lib` for embedded-controller operations. It does not depend on `framework_tool` or copy code from `framework-kcm`.
 
-The first version shows battery percentage and charging state, reads and sets the 25–100% charge limit, and manages weekly charge-limit entries. A one-time full charge uses the EC override command. The service runs only while a KCM request is active, then exits after 60 seconds of inactivity. The schedule uses a systemd timer; no scheduler stays resident.
+The pane shows battery percentage and charging state, reads and sets the 25–100% charge limit, and manages weekly charge-limit profiles. A one-time full charge uses the EC override command. The service runs only while a KCM request is active, then exits after 60 seconds of inactivity. The schedule uses a systemd timer; no scheduler stays resident.
 
 ## Build and install on CachyOS or Arch
 
@@ -32,7 +32,9 @@ sudo ./packaging/enable-passwordless.sh "$USER"
 
 The rule applies only to the named user in an active local session and only to `org.frameworkbattery.modify`. Other users keep the normal polkit policy. Remove `/etc/polkit-1/rules.d/49-framework-battery-USERNAME.rules` as root to revoke access.
 
-Each entry selects weekdays, a local time, and a limit. On boot or when a schedule is saved, the most recent weekly entry is applied. Manual changes last until the next schedule event. The next event can also take precedence over a one-time full-charge request.
+Each profile selects start weekdays, 24-hour start and end times, and a charge limit. A single range slider adjusts the window in 15-minute steps; the time fields allow exact minutes. An end time earlier than the start time means the next day. Profiles can be enabled individually, but enabled windows cannot overlap. A separate 25–100% limit applies outside active windows. On boot or when a schedule is saved, the limit for the current window is applied. Manual changes last until the next start or end event. The next event can also take precedence over a one-time full-charge request.
+
+Version 1 event-based schedules continue to run unchanged until a new profile schedule is saved. The editor shows a notice when it loads an older schedule and converts the displayed entries to windows when saved.
 
 The one-time button starts disabled. To verify the EC override on a device, run:
 

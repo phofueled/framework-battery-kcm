@@ -116,7 +116,15 @@ void FrameworkBatteryKcm::loadSchedule() {
         }
         const auto object = document.object();
         m_scheduleEnabled = object.value(QStringLiteral("enabled")).toBool();
+        m_scheduleOutsideLimit = object.value(QStringLiteral("outside_limit")).toInt(100);
         m_scheduleEntries = object.value(QStringLiteral("entries")).toArray().toVariantList();
+        m_scheduleHasLegacyEntries = false;
+        for (const auto &entry : object.value(QStringLiteral("entries")).toArray()) {
+            if (!entry.toObject().value(QStringLiteral("end_minute")).isDouble()) {
+                m_scheduleHasLegacyEntries = true;
+                break;
+            }
+        }
         Q_EMIT scheduleLoaded();
     });
 }
@@ -162,9 +170,14 @@ void FrameworkBatteryKcm::chargeToFullOnce() {
     });
 }
 
-void FrameworkBatteryKcm::saveSchedule(bool enabled, const QVariantList &entries) {
+void FrameworkBatteryKcm::saveSchedule(bool enabled, int outsideLimit, const QVariantList &entries) {
+    if (outsideLimit < 25 || outsideLimit > 100) {
+        setError(i18n("Outside-hours limit must be between 25% and 100%."));
+        return;
+    }
     QVariantMap value;
     value.insert(QStringLiteral("enabled"), enabled);
+    value.insert(QStringLiteral("outside_limit"), outsideLimit);
     value.insert(QStringLiteral("entries"), entries);
     const auto json = QString::fromUtf8(QJsonDocument::fromVariant(value).toJson(QJsonDocument::Compact));
     callWrite(QStringLiteral("SetSchedule"), {json}, [this] {
