@@ -1,0 +1,16 @@
+[Unit]
+Description=Framework battery control D-Bus service
+After=polkit.service
+
+[Service]
+Type=dbus
+BusName=org.frameworkbattery.Control1
+ExecStart=/usr/lib/framework-battery/framework-battery-helper serve
+User=root
+StateDirectory=framework-battery
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/systemd/system
+PrivateTmp=true

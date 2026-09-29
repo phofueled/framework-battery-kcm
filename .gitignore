@@ -1,0 +1,7 @@
+/target/
+/build/
+/packaging/src/
+/packaging/pkg/
+/packaging/*.tar.gz
+/packaging/*.pkg.tar.zst
+/packaging/.SRCINFO

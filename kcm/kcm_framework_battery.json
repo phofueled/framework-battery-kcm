@@ -1,0 +1,11 @@
+{
+  "KPlugin": {
+    "Name": "Framework Battery",
+    "Description": "Battery charge limit and weekly schedule for Framework laptops",
+    "Icon": "battery",
+    "License": "BSD-3-Clause",
+    "Id": "kcm_framework_battery"
+  },
+  "X-KDE-Keywords": "framework,battery,charge,limit,schedule",
+  "X-KDE-System-Settings-Parent-Category": "hardware"
+}

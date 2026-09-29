@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.frameworkbattery.Control1
+SystemdService=framework-battery-dbus.service
