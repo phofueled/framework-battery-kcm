@@ -1,8 +1,8 @@
 # Framework Battery for KDE
 
-A small KDE System Settings pane for Framework laptop battery controls on CachyOS and Arch Linux. The pane is Qt/QML with Kirigami; a Rust system D-Bus service uses Framework's `framework_lib` for embedded-controller operations. It does not depend on `framework_tool` or copy code from `framework-kcm`.
+A small KDE System Settings pane for Framework laptop battery controls on CachyOS and Arch Linux. The pane is Qt/QML with Kirigami; a Rust system D-Bus service sends only the required charge commands through Linux `/dev/cros_ec`. Its command definitions follow Framework System's BSD-licensed EC protocol. It does not depend on `framework_tool` or copy code from `framework-kcm`.
 
-The pane shows battery percentage and charging state, reads and sets the 25–100% charge limit, and manages weekly charge-limit profiles. A one-time full charge uses the EC override command. The service runs only while a KCM request is active, then exits after 60 seconds of inactivity. The schedule uses a systemd timer; no scheduler stays resident.
+The pane shows battery percentage and charging state, reads and sets the 25–100% charge limit, and manages weekly charge-limit profiles. A one-time full charge uses the EC override command. The service starts on demand and exits after 15 seconds of inactivity. The schedule uses a systemd timer; no scheduler stays resident.
 
 ## Build and install on CachyOS or Arch
 
@@ -60,4 +60,4 @@ systemd-analyze calendar 'Mon *-*-* 08:00:00'
 
 The helper deliberately requires `/dev/cros_ec` and a Framework DMI vendor. It does not use Framework System's raw port-I/O fallback. On unsupported hardware or where the EC driver is missing, the pane shows an error and disables the controls.
 
-`framework_lib` is BSD-3-Clause. This project uses the battery-page and KCM integration ideas from `framework-kcm`, but its source code and UI were written independently.
+The EC command definitions and ioctl layout are based on BSD-3-Clause licensed Framework System `framework_lib` 0.6.6 and the Linux `cros_ec_dev` interface. This project uses the battery-page and KCM integration ideas from `framework-kcm`, but its source code and UI were written independently.

@@ -16,6 +16,7 @@ use zbus_polkit::policykit1::{AuthorityProxy, CheckAuthorizationFlags, Subject};
 const BUS_NAME: &str = "org.frameworkbattery.Control1";
 const OBJECT_PATH: &str = "/org/frameworkbattery/Control1";
 const ACTION: &str = "org.frameworkbattery.modify";
+const IDLE_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Default)]
 struct Activity {
@@ -166,7 +167,7 @@ async fn serve() -> Result<()> {
         if state.active_calls == 0
             && state
                 .last
-                .is_some_and(|last| last.elapsed() >= Duration::from_secs(60))
+                .is_some_and(|last| last.elapsed() >= IDLE_TIMEOUT)
         {
             break;
         }
