@@ -37,7 +37,7 @@ KCMUtils.ScrollViewKCM {
             id: content
             x: Kirigami.Units.largeSpacing
             width: scroller.width - 2 * Kirigami.Units.largeSpacing
-            spacing: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.smallSpacing
 
             Kirigami.InlineMessage {
                 Layout.fillWidth: true
@@ -139,7 +139,6 @@ KCMUtils.ScrollViewKCM {
                 }
             }
 
-            Item { Layout.preferredHeight: Kirigami.Units.largeSpacing }
         }
     }
 }

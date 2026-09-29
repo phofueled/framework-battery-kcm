@@ -2,7 +2,7 @@
 # Run ./make-source.sh, then makepkg -si from this directory.
 pkgname=framework-battery-kcm
 pkgver=0.1.0
-pkgrel=3
+pkgrel=4
 pkgdesc='Minimal Framework battery settings pane for KDE Plasma'
 arch=('x86_64')
 url='https://github.com/phofueled/framework-battery-kcm'
