@@ -1,6 +1,6 @@
 [package]
 name = "framework-battery-helper"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "BSD-3-Clause"
 description = "Privileged EC backend for the Framework Battery KDE settings pane"
@@ -18,6 +18,8 @@ zbus = { version = "5.19", default-features = false, features = ["async-io"] }
 zbus_polkit = { version = "5.0", default-features = false }
 
 [profile.release]
-lto = "thin"
+# The helper does little CPU work, so favor installed size over throughput.
+opt-level = "z"
+lto = "fat"
 codegen-units = 1
 strip = true

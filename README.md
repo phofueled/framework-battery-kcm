@@ -60,4 +60,6 @@ systemd-analyze calendar 'Mon *-*-* 08:00:00'
 
 The helper deliberately requires `/dev/cros_ec` and a Framework DMI vendor. It does not use Framework System's raw port-I/O fallback. On unsupported hardware or where the EC driver is missing, the pane shows an error and disables the controls.
 
+Release builds favor size (`opt-level = "z"` and full LTO). This keeps the existing D-Bus, polkit, atomic schedule writes, and local-time scheduling code while reducing the installed helper footprint.
+
 The EC command definitions and ioctl layout are based on BSD-3-Clause licensed Framework System `framework_lib` 0.6.6 and the Linux `cros_ec_dev` interface. This project uses the battery-page and KCM integration ideas from `framework-kcm`, but its source code and UI were written independently.
