@@ -2,7 +2,7 @@
 
 A small KDE System Settings pane for Framework laptop battery controls on CachyOS and Arch Linux. The pane is Qt/QML with Kirigami; a Rust system D-Bus service sends only the required charge commands through Linux `/dev/cros_ec`. Its command definitions follow Framework System's BSD-licensed EC protocol. It does not depend on `framework_tool` or copy code from `framework-kcm`.
 
-The pane shows battery percentage, charging state, cycle count, estimated battery health, full charge capacity, and design capacity. It reads and sets the 25–100% charge limit and manages weekly charge-limit profiles. A one-time full charge uses the EC override command. The service starts on demand and exits after 15 seconds of inactivity. The schedule uses a systemd timer; no scheduler stays resident.
+The pane shows battery percentage, charging state, cycle count, estimated battery health, full charge capacity, and design capacity. It reads and sets the 25–100% charge limit and manages weekly charge-limit profiles. A one-time full charge uses the EC override command. The service starts on demand and exits after 15 seconds of inactivity. The pane polls only while its battery page is visible, and refreshes immediately when shown again. The schedule uses a systemd timer; no scheduler stays resident.
 
 ## Build and install on CachyOS or Arch
 
@@ -64,5 +64,9 @@ The helper deliberately requires `/dev/cros_ec` and a Framework DMI vendor. It d
 Battery health is the last full charge capacity divided by design capacity. Capacities come from Linux power-supply data and are displayed in Wh. When only charge capacity is available, the pane converts it using the reported design voltage, rather than the fluctuating present voltage. Health uses one matching pair of charge or energy readings. The cycle count is read as a 32-bit value from the EC, matching Framework Tool; some Framework firmware exposes a truncated count through ACPI. These readings add no runtime dependencies.
 
 Release builds favor size (`opt-level = "z"` and full LTO). This keeps the existing D-Bus, polkit, atomic schedule writes, and local-time scheduling code while reducing the installed helper footprint.
+
+Status refreshes use one `GetStatus` D-Bus request and one EC device open for the charge limit, override availability, and cycle count. The existing individual methods remain available, and the KCM falls back to them when an older helper is still running during an upgrade. The combined reply retains cycle count if the charge-limit command alone fails, and unavailable cycle readings do not disable charge controls.
+
+Weekly scheduling uses Linux `clock_gettime`, `tzset`, and `localtime_r` through the existing libc dependency. Clock/conversion failures are returned before any EC write. Tests cover local daylight-saving transitions, week boundaries, fractional timezone offsets, conversion overflow, and polling visibility in KDE's QQuickWidget host.
 
 The EC command definitions and ioctl layout are based on BSD-3-Clause licensed Framework System `framework_lib` 0.6.6 and the Linux `cros_ec_dev` interface. This project uses the battery-page and KCM integration ideas from `framework-kcm`, but its source code and UI were written independently.

@@ -1,7 +1,7 @@
-use anyhow::{bail, Result};
-use chrono::{DateTime, Datelike, Local, Timelike};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::mem::MaybeUninit;
 
 const WEEK_MINUTES: u32 = 7 * 24 * 60;
 const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -157,11 +157,16 @@ impl Schedule {
         Some(self.outside_limit)
     }
 
-    pub fn effective_limit_now(&self) -> Option<u8> {
-        let now: DateTime<Local> = Local::now();
-        let week_minute =
-            now.weekday().num_days_from_monday() * 1440 + now.hour() * 60 + now.minute();
-        self.effective_limit_at_week_minute(week_minute)
+    pub fn effective_limit_now(&self) -> Result<Option<u8>> {
+        if !self.enabled {
+            return Ok(None);
+        }
+        let mut now = MaybeUninit::<libc::timespec>::uninit();
+        if unsafe { libc::clock_gettime(libc::CLOCK_REALTIME, now.as_mut_ptr()) } != 0 {
+            return Err(std::io::Error::last_os_error()).context("Cannot read the system clock");
+        }
+        let now = unsafe { now.assume_init() };
+        Ok(self.effective_limit_at_week_minute(local_week_minute(now.tv_sec)?))
     }
 
     pub fn timer_unit(&self) -> Result<String> {
@@ -182,6 +187,28 @@ impl Schedule {
         unit.push_str("\n[Install]\nWantedBy=timers.target\n");
         Ok(unit)
     }
+}
+
+extern "C" {
+    fn tzset();
+}
+
+fn local_week_minute(timestamp: libc::time_t) -> Result<u32> {
+    let mut local = MaybeUninit::<libc::tm>::uninit();
+    // Refresh /etc/localtime after a timezone change. localtime_r alone may
+    // reuse an older timezone; both libc calls serialize their internal state.
+    unsafe { tzset() };
+    if unsafe { libc::localtime_r(&timestamp, local.as_mut_ptr()) }.is_null() {
+        return Err(std::io::Error::last_os_error()).context("Cannot read the current local time");
+    }
+    let local = unsafe { local.assume_init() };
+    if !(0..=6).contains(&local.tm_wday)
+        || !(0..=23).contains(&local.tm_hour)
+        || !(0..=59).contains(&local.tm_min)
+    {
+        bail!("The system returned an invalid local time");
+    }
+    Ok(((local.tm_wday + 6) % 7) as u32 * 1440 + local.tm_hour as u32 * 60 + local.tm_min as u32)
 }
 
 fn format_calendar(day: &str, minute: u16) -> String {
@@ -214,6 +241,60 @@ mod tests {
                 profile(1, 8 * 60, 17 * 60, 80),
                 profile(1 << 6, 20 * 60, 6 * 60, 60),
             ],
+        }
+    }
+
+    #[test]
+    fn local_time_handles_dst_week_boundaries_and_conversion_errors() {
+        const CHILD_ZONE: &str = "FRAMEWORK_BATTERY_TEST_TIMEZONE";
+        if let Ok(zone) = std::env::var(CHILD_ZONE) {
+            let cases: &[(i64, u32)] = match zone.as_str() {
+                "America/Toronto" => &[
+                    (1_772_953_140, 8759), // Sunday 01:59 before spring DST.
+                    (1_772_953_200, 8820), // Sunday 03:00 after the skipped hour.
+                    (1_793_512_740, 8759), // Sunday 01:59 before autumn DST.
+                    (1_793_512_800, 8700), // Sunday 01:00 after the repeated hour.
+                    (1_773_633_540, 10079),
+                    (1_773_633_600, 0),
+                ],
+                "Europe/Berlin" => &[
+                    (1_774_745_940, 8759),
+                    (1_774_746_000, 8820),
+                    (1_792_889_940, 8819),
+                    (1_792_890_000, 8760),
+                ],
+                "Asia/Kathmandu" => &[(1_773_598_440, 10079), (1_773_598_500, 0)],
+                "UTC" => &[(1_773_619_140, 10079), (1_773_619_200, 0), (-1, 4319)],
+                _ => panic!("Unexpected test timezone"),
+            };
+            for &(timestamp, minute) in cases {
+                assert_eq!(
+                    local_week_minute(timestamp).unwrap(),
+                    minute,
+                    "{zone}: {timestamp}"
+                );
+            }
+            assert!(local_week_minute(i64::MAX).is_err());
+            return;
+        }
+        // Each timezone gets its own process, avoiding global TZ mutations in
+        // the parallel Rust test harness.
+        for zone in ["America/Toronto", "Europe/Berlin", "Asia/Kathmandu", "UTC"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "schedule::tests::local_time_handles_dst_week_boundaries_and_conversion_errors",
+                ])
+                .env("TZ", zone)
+                .env(CHILD_ZONE, zone)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{zone}: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
     }
     #[test]

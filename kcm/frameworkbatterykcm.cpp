@@ -6,12 +6,16 @@
 #include <QDBusConnection>
 #include <QDBusError>
 #include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QDir>
+#include <QEvent>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
+#include <QQuickItem>
+#include <QQuickRenderControl>
 #include <QVariantMap>
 
 #include <limits>
@@ -33,9 +37,76 @@ FrameworkBatteryKcm::FrameworkBatteryKcm(QObject *parent, const KPluginMetaData 
     setButtons(NoAdditionalButton);
     m_refreshTimer.setInterval(30000);
     connect(&m_refreshTimer, &QTimer::timeout, this, &FrameworkBatteryKcm::refresh);
-    m_refreshTimer.start();
-    refresh();
+    connect(this, &KQuickConfigModule::mainUiReady, this, [this] {
+        auto *page = mainUi();
+        connect(page, &QQuickItem::windowChanged, this, &FrameworkBatteryKcm::watchRefreshWindow);
+        watchRefreshWindow(page->window());
+    });
+    refreshPower();
     loadSchedule();
+}
+
+void FrameworkBatteryKcm::setRefreshEnabled(bool enabled) {
+    m_refreshRequested = enabled;
+    updateRefreshState();
+}
+
+void FrameworkBatteryKcm::watchRefreshWindow(QQuickWindow *window) {
+    if (m_quickWindow) {
+        disconnect(m_quickWindow, nullptr, this, nullptr);
+        if (m_quickWindow != m_refreshWindow) {
+            m_quickWindow->removeEventFilter(this);
+        }
+    }
+    m_quickWindow = window;
+    if (window) {
+        window->installEventFilter(this);
+        connect(window, &QWindow::visibilityChanged, this, &FrameworkBatteryKcm::updateRefreshState);
+        connect(window, &QObject::destroyed, this, [this] {
+            m_quickWindow.clear();
+            updateRefreshState();
+        });
+    }
+    updateRefreshState();
+}
+
+bool FrameworkBatteryKcm::eventFilter(QObject *watched, QEvent *event) {
+    if ((watched == m_quickWindow || watched == m_refreshWindow)
+        && (event->type() == QEvent::Expose || event->type() == QEvent::Show
+            || event->type() == QEvent::Hide || event->type() == QEvent::WindowStateChange)) {
+        updateRefreshState();
+    }
+    return KQuickConfigModule::eventFilter(watched, event);
+}
+
+void FrameworkBatteryKcm::updateRefreshState() {
+    // QQuickWidget's synthetic window can stay Windowed when KWin minimizes
+    // its native host. Observe that host's exposure instead of focus changes.
+    auto *window = m_quickWindow ? QQuickRenderControl::renderWindowFor(m_quickWindow) : nullptr;
+    if (!window) {
+        window = m_quickWindow;
+    }
+    if (window != m_refreshWindow) {
+        if (m_refreshWindow && m_refreshWindow != m_quickWindow) {
+            m_refreshWindow->removeEventFilter(this);
+        }
+        m_refreshWindow = window;
+        if (window && window != m_quickWindow) {
+            window->installEventFilter(this);
+        }
+    }
+    const bool enabled = m_refreshRequested && window && window->isVisible()
+        && window->isExposed() && window->visibility() != QWindow::Minimized;
+    if (enabled == m_refreshTimer.isActive()) {
+        return;
+    }
+    if (enabled) {
+        refresh();
+        m_refreshTimer.start();
+    } else {
+        m_refreshTimer.stop();
+    }
+    Q_EMIT refreshEnabledChanged();
 }
 
 QDBusMessage FrameworkBatteryKcm::request(const QString &method, const QList<QVariant> &arguments) {
@@ -94,6 +165,37 @@ void FrameworkBatteryKcm::refreshPower() {
 
 void FrameworkBatteryKcm::refresh() {
     refreshPower();
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::systemBus().asyncCall(request(QStringLiteral("GetStatus"))), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher] {
+        const QDBusPendingReply<int, bool, qlonglong, QString> reply(*watcher);
+        watcher->deleteLater();
+        // An already-running helper can remain at the old version during an upgrade.
+        if (reply.isError() && reply.error().type() == QDBusError::UnknownMethod) {
+            refreshLegacyStatus();
+            return;
+        }
+        m_cycleCount = -1;
+        if (reply.isError()) {
+            m_serviceAvailable = false;
+            m_chargeLimit = -1;
+            m_overrideAvailable = false;
+            setError(reply.error().message());
+            return;
+        }
+        m_chargeLimit = reply.argumentAt<0>();
+        m_serviceAvailable = m_chargeLimit >= 0;
+        m_overrideAvailable = reply.argumentAt<1>();
+        const auto cycles = reply.argumentAt<2>();
+        if (cycles >= 0 && cycles <= std::numeric_limits<int>::max()) {
+            m_cycleCount = int(cycles);
+        }
+        m_lastError = reply.argumentAt<3>();
+        Q_EMIT statusChanged();
+    });
+}
+
+void FrameworkBatteryKcm::refreshLegacyStatus() {
     auto *watcher = new QDBusPendingCallWatcher(
         QDBusConnection::systemBus().asyncCall(request(QStringLiteral("GetChargeLimit"))), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher] {

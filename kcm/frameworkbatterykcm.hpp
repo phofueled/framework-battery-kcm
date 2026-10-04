@@ -2,6 +2,8 @@
 
 #include <KQuickConfigModule>
 #include <QDBusMessage>
+#include <QPointer>
+#include <QQuickWindow>
 #include <QTimer>
 #include <QVariantList>
 
@@ -15,6 +17,7 @@ class FrameworkBatteryKcm : public KQuickConfigModule {
     Q_PROPERTY(int cycleCount READ cycleCount NOTIFY statusChanged)
     Q_PROPERTY(QString fullChargeCapacity READ fullChargeCapacity NOTIFY statusChanged)
     Q_PROPERTY(QString designCapacity READ designCapacity NOTIFY statusChanged)
+    Q_PROPERTY(bool refreshEnabled READ refreshEnabled WRITE setRefreshEnabled NOTIFY refreshEnabledChanged)
     Q_PROPERTY(int chargeLimit READ chargeLimit NOTIFY statusChanged)
     Q_PROPERTY(bool serviceAvailable READ serviceAvailable NOTIFY statusChanged)
     Q_PROPERTY(bool overrideAvailable READ overrideAvailable NOTIFY statusChanged)
@@ -34,6 +37,8 @@ public:
     int cycleCount() const { return m_cycleCount; }
     QString fullChargeCapacity() const { return m_fullChargeCapacity; }
     QString designCapacity() const { return m_designCapacity; }
+    bool refreshEnabled() const { return m_refreshTimer.isActive(); }
+    void setRefreshEnabled(bool enabled);
     int chargeLimit() const { return m_chargeLimit; }
     bool serviceAvailable() const { return m_serviceAvailable; }
     bool overrideAvailable() const { return m_overrideAvailable; }
@@ -50,12 +55,17 @@ public:
     Q_INVOKABLE void saveSchedule(bool enabled, int outsideLimit, const QVariantList &entries);
 
 Q_SIGNALS:
+    void refreshEnabledChanged();
     void statusChanged();
     void scheduleLoaded();
     void operationSucceeded(const QString &message);
 
 private:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void watchRefreshWindow(QQuickWindow *window);
+    void updateRefreshState();
     void refreshPower();
+    void refreshLegacyStatus();
     void loadSchedule();
     void callWrite(const QString &method, const QList<QVariant> &arguments,
                    const std::function<void()> &onSuccess);
@@ -63,6 +73,9 @@ private:
     static QDBusMessage request(const QString &method, const QList<QVariant> &arguments = {});
 
     QTimer m_refreshTimer;
+    bool m_refreshRequested = false;
+    QPointer<QQuickWindow> m_quickWindow;
+    QPointer<QWindow> m_refreshWindow;
     int m_chargePercent = -1;
     QString m_batteryState;
     double m_batteryHealth = -1;

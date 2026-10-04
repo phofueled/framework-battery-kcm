@@ -98,8 +98,8 @@ pub fn save(schedule: &Schedule) -> Result<()> {
     )?;
 
     if schedule.enabled {
-        systemctl(&["daemon-reload"])?;
-        systemctl(&["enable", "--now", TIMER_NAME])?;
+        // enable reloads the manager; restart also starts an inactive timer.
+        systemctl(&["enable", TIMER_NAME])?;
         systemctl(&["restart", TIMER_NAME])?;
         apply_current(schedule)?;
     } else if Path::new(TIMER).exists() {
@@ -109,7 +109,7 @@ pub fn save(schedule: &Schedule) -> Result<()> {
 }
 
 pub fn apply_current(schedule: &Schedule) -> Result<()> {
-    if let Some(limit) = schedule.effective_limit_now() {
+    if let Some(limit) = schedule.effective_limit_now()? {
         EcHardware::new()?.set_charge_limit(limit)?;
     }
     Ok(())

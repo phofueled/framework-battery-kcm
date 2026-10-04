@@ -10,6 +10,14 @@ KCMUtils.ScrollViewKCM {
 
     property string successText: ""
 
+    Binding {
+        target: kcm
+        property: "refreshEnabled"
+        value: root.visible && root.isCurrentPage
+            && root.Window.visibility !== Window.Hidden
+            && root.Window.visibility !== Window.Minimized
+    }
+
     Connections {
         target: kcm
         function onOperationSucceeded(message) {

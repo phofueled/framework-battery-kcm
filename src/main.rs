@@ -77,6 +77,18 @@ fn authorized_write(authorized: bool, operation: impl FnOnce() -> Result<()>) ->
 
 #[interface(name = "org.frameworkbattery.Control1")]
 impl BatteryService {
+    async fn get_status(&self) -> fdo::Result<(i32, bool, i64, String)> {
+        let _guard = self.begin();
+        let hardware = EcHardware::new().map_err(dbus_error)?;
+        // Keep cycle count available if only the charge-limit command fails.
+        let (limit, error) = match hardware.charge_limit() {
+            Ok(limit) => (i32::from(limit), String::new()),
+            Err(error) => (-1, error.to_string()),
+        };
+        let cycles = hardware.cycle_count().map(i64::from).unwrap_or(-1);
+        Ok((limit, storage::override_confirmed(), cycles, error))
+    }
+
     async fn get_charge_limit(&self) -> fdo::Result<u32> {
         let _guard = self.begin();
         EcHardware::new()

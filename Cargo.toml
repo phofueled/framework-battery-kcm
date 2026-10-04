@@ -1,6 +1,6 @@
 [package]
 name = "framework-battery-helper"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "BSD-3-Clause"
 description = "Privileged EC backend for the Framework Battery KDE settings pane"
@@ -8,7 +8,6 @@ description = "Privileged EC backend for the Framework Battery KDE settings pane
 [dependencies]
 anyhow = "1"
 async-io = "2"
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 futures-lite = "2"
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
