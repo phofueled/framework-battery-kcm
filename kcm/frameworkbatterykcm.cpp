@@ -1,4 +1,5 @@
 #include "frameworkbatterykcm.hpp"
+#include "batterycapacity.hpp"
 
 #include <KLocalizedString>
 #include <KPluginFactory>
@@ -10,7 +11,10 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QVariantMap>
+
+#include <limits>
 
 K_PLUGIN_CLASS_WITH_JSON(FrameworkBatteryKcm, "kcm_framework_battery.json")
 
@@ -51,10 +55,16 @@ void FrameworkBatteryKcm::setError(const QString &message) {
 void FrameworkBatteryKcm::refreshPower() {
     m_chargePercent = -1;
     m_batteryState = i18n("Battery unavailable");
+    m_batteryHealth = -1;
+    m_fullChargeCapacity.clear();
+    m_designCapacity.clear();
     const QDir supplies(QStringLiteral("/sys/class/power_supply"));
     for (const auto &entry : supplies.entryList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::System)) {
         const auto base = supplies.filePath(entry);
         if (readText(base + QStringLiteral("/type")) != QStringLiteral("Battery")) {
+            continue;
+        }
+        if (readText(base + QStringLiteral("/present")) == QStringLiteral("0")) {
             continue;
         }
         bool ok = false;
@@ -66,6 +76,17 @@ void FrameworkBatteryKcm::refreshPower() {
         if (m_batteryState.isEmpty()) {
             m_batteryState = i18n("Unknown state");
         }
+        const auto capacity = readBatteryCapacity(base);
+        m_batteryHealth = capacity.healthPercent();
+        const auto formatCapacity = [&capacity](qint64 value) {
+            const auto wh = capacity.wattHours(value);
+            if (wh < 0) {
+                return QString{};
+            }
+            return i18n("%1 Wh", QLocale().toString(wh, 'f', 1));
+        };
+        m_fullChargeCapacity = formatCapacity(capacity.full);
+        m_designCapacity = formatCapacity(capacity.design);
         break;
     }
     Q_EMIT statusChanged();
@@ -95,6 +116,21 @@ void FrameworkBatteryKcm::refresh() {
         const auto reply = overrideWatcher->reply();
         overrideWatcher->deleteLater();
         m_overrideAvailable = reply.type() != QDBusMessage::ErrorMessage && reply.arguments().value(0).toBool();
+        Q_EMIT statusChanged();
+    });
+    auto *cycleWatcher = new QDBusPendingCallWatcher(
+        QDBusConnection::systemBus().asyncCall(request(QStringLiteral("GetCycleCount"))), this);
+    connect(cycleWatcher, &QDBusPendingCallWatcher::finished, this, [this, cycleWatcher] {
+        const auto reply = cycleWatcher->reply();
+        cycleWatcher->deleteLater();
+        m_cycleCount = -1;
+        if (reply.type() != QDBusMessage::ErrorMessage) {
+            bool ok = false;
+            const auto count = reply.arguments().value(0).toUInt(&ok);
+            if (ok && count <= uint(std::numeric_limits<int>::max())) {
+                m_cycleCount = int(count);
+            }
+        }
         Q_EMIT statusChanged();
     });
 }

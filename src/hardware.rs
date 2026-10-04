@@ -15,6 +15,17 @@ const GET: u8 = 0x08;
 const OVERRIDE: u8 = 0x80;
 // _IOWR(0xEC, 0, struct cros_ec_command): the kernel header is five u32s.
 const CROS_EC_DEV_IOCXCMD: libc::c_ulong = 0xc014_ec00;
+// _IOWR(0xEC, 1, struct cros_ec_readmem).
+const CROS_EC_DEV_IOCRDMEM: libc::c_ulong = 0xc108_ec01;
+const BATTERY_FLAGS_OFFSET: u32 = 0x4c;
+const BATTERY_STATS_BYTES: u32 = 20;
+
+#[repr(C)]
+struct EcReadMem {
+    offset: u32,
+    bytes: u32,
+    buffer: [u8; 256],
+}
 
 #[repr(C)]
 struct EcCommand {
@@ -65,6 +76,27 @@ impl EcHardware {
         Ok(self.limits()?.1)
     }
 
+    pub fn cycle_count(&self) -> Result<u32> {
+        let mut memory = EcReadMem {
+            offset: BATTERY_FLAGS_OFFSET,
+            bytes: BATTERY_STATS_BYTES,
+            buffer: [0; 256],
+        };
+        // The kernel copies the complete readmem structure, so the buffer must
+        // match its ABI even though only 20 bytes are requested.
+        let received = unsafe {
+            libc::ioctl(
+                self.device.as_raw_fd(),
+                CROS_EC_DEV_IOCRDMEM,
+                &mut memory as *mut EcReadMem,
+            )
+        };
+        if received < 0 {
+            return Err(io::Error::last_os_error()).context("Cannot read EC battery statistics");
+        }
+        decode_cycle_count(&memory.buffer, received)
+    }
+
     pub fn set_charge_limit(&self, limit: u8) -> Result<()> {
         if !(25..=100).contains(&limit) {
             bail!("Charge limit must be between 25% and 100%");
@@ -88,6 +120,22 @@ impl EcHardware {
         }
         Ok(())
     }
+}
+
+fn decode_cycle_count(data: &[u8; 256], received: i32) -> Result<u32> {
+    if received != BATTERY_STATS_BYTES as i32 {
+        bail!("The EC returned incomplete battery statistics");
+    }
+    if data[0] & 0x02 == 0 {
+        bail!("The EC reports no battery present");
+    }
+    // EC_MEMMAP_BATT_CCNT (0x5c) is a little-endian 32-bit count. On this
+    // Framework firmware, ACPI's cycle_count loses the upper bytes.
+    let cycles = u32::from_le_bytes(data[16..20].try_into().unwrap());
+    if cycles == u32::MAX {
+        bail!("The EC cycle count is unavailable");
+    }
+    Ok(cycles)
 }
 
 fn charge_command(
@@ -146,6 +194,22 @@ mod tests {
         assert_eq!(CROS_EC_DEV_IOCXCMD, 0xc014_ec00);
         assert_eq!(CHARGE_LIMIT_CONTROL, 0x3e03);
         assert_eq!((SET, GET, OVERRIDE), (0x02, 0x08, 0x80));
+        assert_eq!(std::mem::size_of::<EcReadMem>(), 264);
+        assert_eq!(std::mem::offset_of!(EcReadMem, buffer), 8);
+    }
+
+    #[test]
+    fn cycle_count_keeps_high_bytes_and_rejects_unavailable_reads() {
+        let mut data = [0; 256];
+        data[0] = 0x02;
+        data[16..20].copy_from_slice(&342_u32.to_le_bytes());
+        assert_eq!(decode_cycle_count(&data, 20).unwrap(), 342);
+        assert!(decode_cycle_count(&data, 19).is_err());
+        data[0] = 0;
+        assert!(decode_cycle_count(&data, 20).is_err());
+        data[0] = 0x02;
+        data[16..20].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(decode_cycle_count(&data, 20).is_err());
     }
 
     #[test]

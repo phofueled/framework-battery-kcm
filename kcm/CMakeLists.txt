@@ -1,6 +1,7 @@
 kcmutils_add_qml_kcm(kcm_framework_battery
     SOURCES
         frameworkbatterykcm.cpp
+        batterycapacity.cpp
 )
 
 target_link_libraries(kcm_framework_battery PRIVATE

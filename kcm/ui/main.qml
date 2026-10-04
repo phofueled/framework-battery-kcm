@@ -6,6 +6,7 @@ import org.kde.kcmutils as KCMUtils
 
 KCMUtils.ScrollViewKCM {
     id: root
+    flickable: scroller
 
     property string successText: ""
 
@@ -70,6 +71,39 @@ KCMUtils.ScrollViewKCM {
                     text: i18n("Refresh")
                     icon.name: "view-refresh"
                     onClicked: kcm.refresh()
+                }
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: Kirigami.Units.largeSpacing
+                rowSpacing: Kirigami.Units.smallSpacing
+
+                Controls.Label { text: i18n("Battery health"); opacity: 0.7 }
+                Controls.Label {
+                    objectName: "batteryHealthValue"
+                    Layout.fillWidth: true
+                    text: kcm.batteryHealth < 0 ? i18n("Unavailable")
+                        : i18n("%1%", Number(kcm.batteryHealth).toLocaleString(Qt.locale(), 'f', 1))
+                }
+                Controls.Label { text: i18n("Cycle count"); opacity: 0.7 }
+                Controls.Label {
+                    objectName: "cycleCountValue"
+                    Layout.fillWidth: true
+                    text: kcm.cycleCount < 0 ? i18n("Unavailable") : i18n("%1", kcm.cycleCount)
+                }
+                Controls.Label { text: i18n("Full charge capacity"); opacity: 0.7 }
+                Controls.Label {
+                    objectName: "fullChargeCapacityValue"
+                    Layout.fillWidth: true
+                    text: kcm.fullChargeCapacity.length > 0 ? kcm.fullChargeCapacity : i18n("Unavailable")
+                }
+                Controls.Label { text: i18n("Design capacity"); opacity: 0.7 }
+                Controls.Label {
+                    objectName: "designCapacityValue"
+                    Layout.fillWidth: true
+                    text: kcm.designCapacity.length > 0 ? kcm.designCapacity : i18n("Unavailable")
                 }
             }
 

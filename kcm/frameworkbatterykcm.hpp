@@ -11,6 +11,10 @@ class FrameworkBatteryKcm : public KQuickConfigModule {
     Q_OBJECT
     Q_PROPERTY(int chargePercent READ chargePercent NOTIFY statusChanged)
     Q_PROPERTY(QString batteryState READ batteryState NOTIFY statusChanged)
+    Q_PROPERTY(double batteryHealth READ batteryHealth NOTIFY statusChanged)
+    Q_PROPERTY(int cycleCount READ cycleCount NOTIFY statusChanged)
+    Q_PROPERTY(QString fullChargeCapacity READ fullChargeCapacity NOTIFY statusChanged)
+    Q_PROPERTY(QString designCapacity READ designCapacity NOTIFY statusChanged)
     Q_PROPERTY(int chargeLimit READ chargeLimit NOTIFY statusChanged)
     Q_PROPERTY(bool serviceAvailable READ serviceAvailable NOTIFY statusChanged)
     Q_PROPERTY(bool overrideAvailable READ overrideAvailable NOTIFY statusChanged)
@@ -26,6 +30,10 @@ public:
 
     int chargePercent() const { return m_chargePercent; }
     QString batteryState() const { return m_batteryState; }
+    double batteryHealth() const { return m_batteryHealth; }
+    int cycleCount() const { return m_cycleCount; }
+    QString fullChargeCapacity() const { return m_fullChargeCapacity; }
+    QString designCapacity() const { return m_designCapacity; }
     int chargeLimit() const { return m_chargeLimit; }
     bool serviceAvailable() const { return m_serviceAvailable; }
     bool overrideAvailable() const { return m_overrideAvailable; }
@@ -57,6 +65,10 @@ private:
     QTimer m_refreshTimer;
     int m_chargePercent = -1;
     QString m_batteryState;
+    double m_batteryHealth = -1;
+    int m_cycleCount = -1;
+    QString m_fullChargeCapacity;
+    QString m_designCapacity;
     int m_chargeLimit = -1;
     bool m_serviceAvailable = false;
     bool m_overrideAvailable = false;

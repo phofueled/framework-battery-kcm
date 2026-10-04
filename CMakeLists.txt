@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(framework_battery VERSION 0.2.0 LANGUAGES CXX)
+project(framework_battery VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,3 +14,11 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core DBus Gui Qml Quick)
 find_package(KF6 6.0 REQUIRED COMPONENTS CoreAddons I18n KCMUtils)
 
 add_subdirectory(kcm)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(batterycapacity-test tests/batterycapacity-test.cpp kcm/batterycapacity.cpp)
+    target_include_directories(batterycapacity-test PRIVATE kcm)
+    target_link_libraries(batterycapacity-test PRIVATE Qt6::Core)
+    add_test(NAME batterycapacity COMMAND batterycapacity-test)
+endif()

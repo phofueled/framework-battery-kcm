@@ -2,7 +2,7 @@
 
 A small KDE System Settings pane for Framework laptop battery controls on CachyOS and Arch Linux. The pane is Qt/QML with Kirigami; a Rust system D-Bus service sends only the required charge commands through Linux `/dev/cros_ec`. Its command definitions follow Framework System's BSD-licensed EC protocol. It does not depend on `framework_tool` or copy code from `framework-kcm`.
 
-The pane shows battery percentage and charging state, reads and sets the 25–100% charge limit, and manages weekly charge-limit profiles. A one-time full charge uses the EC override command. The service starts on demand and exits after 15 seconds of inactivity. The schedule uses a systemd timer; no scheduler stays resident.
+The pane shows battery percentage, charging state, cycle count, estimated battery health, full charge capacity, and design capacity. It reads and sets the 25–100% charge limit and manages weekly charge-limit profiles. A one-time full charge uses the EC override command. The service starts on demand and exits after 15 seconds of inactivity. The schedule uses a systemd timer; no scheduler stays resident.
 
 ## Build and install on CachyOS or Arch
 
@@ -54,11 +54,14 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
+ctest --test-dir build --output-on-failure
 qmllint kcm/ui/main.qml kcm/ui/SchedulePage.qml
 systemd-analyze calendar 'Mon *-*-* 08:00:00'
 ```
 
 The helper deliberately requires `/dev/cros_ec` and a Framework DMI vendor. It does not use Framework System's raw port-I/O fallback. On unsupported hardware or where the EC driver is missing, the pane shows an error and disables the controls.
+
+Battery health is the last full charge capacity divided by design capacity. Capacities come from Linux power-supply data and are displayed in Wh. When only charge capacity is available, the pane converts it using the reported design voltage, rather than the fluctuating present voltage. Health uses one matching pair of charge or energy readings. The cycle count is read as a 32-bit value from the EC, matching Framework Tool; some Framework firmware exposes a truncated count through ACPI. These readings add no runtime dependencies.
 
 Release builds favor size (`opt-level = "z"` and full LTO). This keeps the existing D-Bus, polkit, atomic schedule writes, and local-time scheduling code while reducing the installed helper footprint.
 

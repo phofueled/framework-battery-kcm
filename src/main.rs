@@ -86,6 +86,14 @@ impl BatteryService {
             .map_err(dbus_error)
     }
 
+    async fn get_cycle_count(&self) -> fdo::Result<u32> {
+        let _guard = self.begin();
+        EcHardware::new()
+            .map_err(dbus_error)?
+            .cycle_count()
+            .map_err(dbus_error)
+    }
+
     async fn set_charge_limit(
         &self,
         limit: u32,
