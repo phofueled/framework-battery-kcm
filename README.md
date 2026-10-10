@@ -2,7 +2,7 @@
 
 A small KDE System Settings pane for Framework laptop battery controls on CachyOS and Arch Linux. The pane is Qt/QML with Kirigami; a Rust system D-Bus service sends only the required charge commands through Linux `/dev/cros_ec`. Its command definitions follow Framework System's BSD-licensed EC protocol. It does not depend on `framework_tool` or copy code from `framework-kcm`.
 
-The pane shows battery percentage, charging state, cycle count, estimated battery health, full charge capacity, and design capacity. It reads and sets the 25–100% charge limit and manages weekly charge-limit profiles. A one-time full charge uses the EC override command. The service starts on demand and exits after 15 seconds of inactivity. The pane polls only while its battery page is visible, and refreshes immediately when shown again. The schedule uses a systemd timer; no scheduler stays resident.
+The pane shows battery percentage, charging state, cycle count, estimated battery health, full charge capacity, and design capacity. It reads and sets the 25–100% charge limit and manages weekly charge-limit profiles. A one-time full charge uses the EC override command and preserves the saved limit. The service starts on demand and exits after 15 seconds of inactivity, except while finishing a requested full-charge cycle. The pane polls only while its battery page is visible, and refreshes immediately when shown again. The schedule uses a systemd timer; no scheduler stays resident.
 
 ## Build and install on CachyOS or Arch
 
@@ -42,7 +42,7 @@ The one-time button starts disabled. To verify the EC override on a device, run:
 sudo /usr/lib/framework-battery/framework-battery-helper verify-override
 ```
 
-**This sends a one-time full-charge request to the EC.** The helper checks that the saved limit did not change, then enables the button for subsequent use. Close and reopen the pane, or press Refresh. Do this only when a one-time full charge is wanted.
+**This sends a one-time full-charge request to the EC.** The helper enables the button after the EC accepts the override. Close and reopen the pane, or press Refresh. Do this only when a one-time full charge is wanted.
 
 For a complete hardware check, `sudo /usr/lib/framework-battery/framework-battery-helper self-test` reads the current limit, changes it by 1%, restores it, and performs the same one-time override verification. This also requests a one-time full charge.
 
@@ -68,5 +68,7 @@ Release builds favor size (`opt-level = "z"` and full LTO). This keeps the exist
 Status refreshes use one `GetStatus` D-Bus request and one EC device open for the charge limit, override availability, and cycle count. The existing individual methods remain available, and the KCM falls back to them when an older helper is still running during an upgrade. The combined reply retains cycle count if the charge-limit command alone fails, and unavailable cycle readings do not disable charge controls.
 
 Weekly scheduling uses Linux `clock_gettime`, `tzset`, and `localtime_r` through the existing libc dependency. Clock/conversion failures are returned before any EC write. Tests cover local daylight-saving transitions, week boundaries, fractional timezone offsets, conversion overflow, and polling visibility in KDE's QQuickWidget host.
+
+On Lilac firmware, `CHG_LIMIT_GET_LIMIT` reloads the saved limit and cancels the volatile override ([EC implementation](https://github.com/FrameworkComputer/EmbeddedController/blob/fwk-lilac-27116/zephyr/program/framework/src/battery_extender.c)). During a requested full charge, status reads return the saved limit from root-owned runtime state without sending this command. The helper checks battery memory every 30 seconds and restores the normal limit when charging completes or AC is disconnected. A request made on battery waits for an AC connection. Manual and scheduled limit changes cancel the request immediately. The runtime state survives helper restarts and clears on reboot; a process-shared lock coordinates the helper and schedule service. No additional dependencies or always-running scheduler are required.
 
 The EC command definitions and ioctl layout are based on BSD-3-Clause licensed Framework System `framework_lib` 0.6.6 and the Linux `cros_ec_dev` interface. This project uses the battery-page and KCM integration ideas from `framework-kcm`, but its source code and UI were written independently.

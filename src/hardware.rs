@@ -13,6 +13,7 @@ const CHARGE_LIMIT_CONTROL: u32 = 0x3e03;
 const SET: u8 = 0x02;
 const GET: u8 = 0x08;
 const OVERRIDE: u8 = 0x80;
+const DISABLE: u8 = 0x01;
 // _IOWR(0xEC, 0, struct cros_ec_command): the kernel header is five u32s.
 const CROS_EC_DEV_IOCXCMD: libc::c_ulong = 0xc014_ec00;
 // _IOWR(0xEC, 1, struct cros_ec_readmem).
@@ -113,13 +114,56 @@ impl EcHardware {
     }
 
     pub fn charge_to_full_once(&self) -> Result<()> {
-        let saved = self.charge_limit()?;
+        // Lilac firmware's GET command clears the volatile override. Do not
+        // read the limit after this command, including for verification.
         self.command(OVERRIDE, 0, 0, 0)?;
-        if self.charge_limit()? != saved {
-            bail!("The EC changed the saved limit during the one-time override");
+        Ok(())
+    }
+
+    pub fn finish_full_charge(&self) -> Result<()> {
+        // Preserve the EC's saved value even if another tool changed it.
+        let (min, max) = self.limits()?;
+        if max == 0 {
+            self.command(DISABLE, 0, 0, 0)?;
+        } else if max <= 100 {
+            self.command(SET, max, min, 0)?;
+        } else {
+            bail!("The EC returned an invalid saved charge limit");
         }
         Ok(())
     }
+
+    pub fn battery_state(&self) -> Result<crate::charge::BatteryState> {
+        let mut memory = EcReadMem {
+            offset: 0x40,
+            bytes: 28,
+            buffer: [0; 256],
+        };
+        let received = unsafe {
+            libc::ioctl(
+                self.device.as_raw_fd(),
+                CROS_EC_DEV_IOCRDMEM,
+                &mut memory as *mut EcReadMem,
+            )
+        };
+        if received < 0 {
+            return Err(io::Error::last_os_error()).context("Cannot read EC battery status");
+        }
+        decode_battery_state(&memory.buffer, received)
+    }
+}
+
+fn decode_battery_state(data: &[u8; 256], received: i32) -> Result<crate::charge::BatteryState> {
+    if received != 28 || data[12] & 0x20 != 0 {
+        bail!("The EC returned unavailable battery status");
+    }
+    let remaining = u32::from_le_bytes(data[8..12].try_into().unwrap());
+    let full = u32::from_le_bytes(data[24..28].try_into().unwrap());
+    Ok(crate::charge::BatteryState {
+        present: data[12] & 0x02 != 0,
+        on_ac: data[12] & 0x01 != 0,
+        full: full > 0 && full != u32::MAX && remaining != u32::MAX && remaining >= full,
+    })
 }
 
 fn decode_cycle_count(data: &[u8; 256], received: i32) -> Result<u32> {
@@ -179,6 +223,27 @@ fn check_device(vendor: &str, has_cros_ec: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn battery_state_decodes_ac_presence_and_full_capacity_without_charge_commands() {
+        let mut data = [0; 256];
+        data[12] = 0x03;
+        data[8..12].copy_from_slice(&2470_u32.to_le_bytes());
+        data[24..28].copy_from_slice(&3087_u32.to_le_bytes());
+        let state = decode_battery_state(&data, 28).unwrap();
+        assert!(state.present && state.on_ac && !state.full);
+        data[8..12].copy_from_slice(&3087_u32.to_le_bytes());
+        assert!(decode_battery_state(&data, 28).unwrap().full);
+        data[12] = 0x02;
+        assert!(!decode_battery_state(&data, 28).unwrap().on_ac);
+        data[24..28].copy_from_slice(&0_u32.to_le_bytes());
+        assert!(!decode_battery_state(&data, 28).unwrap().full);
+        data[24..28].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(!decode_battery_state(&data, 28).unwrap().full);
+        data[12] = 0x23;
+        assert!(decode_battery_state(&data, 28).is_err());
+        assert!(decode_battery_state(&data, 27).is_err());
+    }
 
     #[test]
     fn unsupported_hardware_is_rejected_without_ec_access() {

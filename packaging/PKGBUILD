@@ -1,7 +1,7 @@
 # Local source package for CachyOS and Arch Linux.
 # Run ./make-source.sh, then makepkg -si from this directory.
 pkgname=framework-battery-kcm
-pkgver=0.3.1
+pkgver=0.3.2
 pkgrel=1
 pkgdesc='Minimal Framework battery settings pane for KDE Plasma'
 arch=('x86_64')

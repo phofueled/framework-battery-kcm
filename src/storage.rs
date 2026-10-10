@@ -19,19 +19,21 @@ pub fn override_confirmed() -> bool {
 }
 
 pub fn verify_override() -> Result<()> {
-    EcHardware::new()?.charge_to_full_once()?;
+    crate::charge::ChargeControl::default().charge_to_full_once(&EcHardware::new()?)?;
     fs::create_dir_all(STATE_DIR)?;
     fs::set_permissions(STATE_DIR, Permissions::from_mode(0o700))?;
     atomic_write(Path::new(OVERRIDE_MARKER), b"confirmed\n", 0o600)?;
+    systemctl(&["start", "framework-battery-dbus.service"])?;
     Ok(())
 }
 
 pub fn hardware_self_test() -> Result<()> {
     let hardware = EcHardware::new()?;
-    let original = hardware.charge_limit()?;
+    let control = crate::charge::ChargeControl::default();
+    let original = control.charge_limit(&hardware)?;
     let temporary = if original == 100 { 99 } else { original + 1 };
-    let changed = hardware.set_charge_limit(temporary);
-    let restored = hardware.set_charge_limit(original);
+    let changed = control.set_charge_limit(&hardware, temporary);
+    let restored = control.set_charge_limit(&hardware, original);
     restored.context("Could not restore the original charge limit")?;
     changed.context("Could not apply the temporary test limit")?;
     verify_override()?;
@@ -52,7 +54,7 @@ pub fn load() -> Result<Schedule> {
     }
 }
 
-fn atomic_write(path: &Path, data: &[u8], mode: u32) -> Result<()> {
+pub(crate) fn atomic_write(path: &Path, data: &[u8], mode: u32) -> Result<()> {
     let parent = path.parent().context("Output path has no parent")?;
     let mut temporary = NamedTempFile::new_in(parent).context("Cannot create temporary file")?;
     temporary
@@ -110,7 +112,7 @@ pub fn save(schedule: &Schedule) -> Result<()> {
 
 pub fn apply_current(schedule: &Schedule) -> Result<()> {
     if let Some(limit) = schedule.effective_limit_now()? {
-        EcHardware::new()?.set_charge_limit(limit)?;
+        crate::charge::ChargeControl::default().set_charge_limit(&EcHardware::new()?, limit)?;
     }
     Ok(())
 }

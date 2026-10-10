@@ -1,8 +1,10 @@
+mod charge;
 mod hardware;
 mod schedule;
 mod storage;
 
 use anyhow::{bail, Result};
+use charge::ChargeControl;
 use hardware::EcHardware;
 use schedule::Schedule;
 use std::collections::HashMap;
@@ -81,7 +83,7 @@ impl BatteryService {
         let _guard = self.begin();
         let hardware = EcHardware::new().map_err(dbus_error)?;
         // Keep cycle count available if only the charge-limit command fails.
-        let (limit, error) = match hardware.charge_limit() {
+        let (limit, error) = match ChargeControl::default().charge_limit(&hardware) {
             Ok(limit) => (i32::from(limit), String::new()),
             Err(error) => (-1, error.to_string()),
         };
@@ -91,9 +93,8 @@ impl BatteryService {
 
     async fn get_charge_limit(&self) -> fdo::Result<u32> {
         let _guard = self.begin();
-        EcHardware::new()
-            .map_err(dbus_error)?
-            .charge_limit()
+        ChargeControl::default()
+            .charge_limit(&EcHardware::new().map_err(dbus_error)?)
             .map(u32::from)
             .map_err(dbus_error)
     }
@@ -118,7 +119,9 @@ impl BatteryService {
             return Err(fdo::Error::InvalidArgs("Limit must be 25–100%".into()));
         }
         let authorized = is_authorized(conn, &header).await?;
-        authorized_write(authorized, || EcHardware::new()?.set_charge_limit(limit))
+        authorized_write(authorized, || {
+            ChargeControl::default().set_charge_limit(&EcHardware::new()?, limit)
+        })
     }
 
     async fn charge_to_full_once(
@@ -133,7 +136,9 @@ impl BatteryService {
             ));
         }
         let authorized = is_authorized(conn, &header).await?;
-        authorized_write(authorized, || EcHardware::new()?.charge_to_full_once())
+        authorized_write(authorized, || {
+            ChargeControl::default().charge_to_full_once(&EcHardware::new()?)
+        })
     }
 
     async fn get_override_available(&self) -> fdo::Result<bool> {
@@ -181,10 +186,27 @@ async fn serve() -> Result<()> {
         .build()
         .await?;
 
+    let control = ChargeControl::default();
+    let mut interval = Duration::from_secs(5);
     loop {
-        async_io::Timer::after(Duration::from_secs(5)).await;
+        async_io::Timer::after(interval).await;
+        // Stay resident only during the requested cycle so restoration works
+        // even with the pane closed. Ordinary idle lifetime remains unchanged.
+        let full_active = if control.pending() {
+            match EcHardware::new().and_then(|hardware| control.poll_full_charge(&hardware)) {
+                Ok(active) => active,
+                Err(error) => {
+                    eprintln!("Cannot check one-time full charge: {error:#}");
+                    true
+                }
+            }
+        } else {
+            false
+        };
+        interval = Duration::from_secs(if full_active { 30 } else { 5 });
         let state = activity.lock().unwrap();
-        if state.active_calls == 0
+        if !full_active
+            && state.active_calls == 0
             && state
                 .last
                 .is_some_and(|last| last.elapsed() >= IDLE_TIMEOUT)
@@ -205,7 +227,7 @@ fn main() -> Result<()> {
         Some("verify-override") => storage::verify_override(),
         Some("self-test") => storage::hardware_self_test(),
         Some("read-limit") => {
-            println!("{}", EcHardware::new()?.charge_limit()?);
+            println!("{}", ChargeControl::default().charge_limit(&EcHardware::new()?)?);
             Ok(())
         }
         _ => bail!("Usage: framework-battery-helper serve|apply-schedule|verify-override|self-test|read-limit"),
